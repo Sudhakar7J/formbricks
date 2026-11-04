@@ -8,6 +8,19 @@ type TSetupCheckoutUpgradeIntent = {
   targetInterval: TCloudBillingInterval;
 };
 
+// Stripe removed `payment_method_types` from Checkout Session creation in API version
+// 2026-09-30.endive and replaced it with `allowed_payment_method_types`.
+const ALLOWED_PAYMENT_METHOD_TYPES_API_VERSION = "2026-09-30.endive";
+
+type TCardOnlyCheckoutParams =
+  | Pick<Stripe.Checkout.SessionCreateParams, "payment_method_types">
+  | { allowed_payment_method_types: string[] };
+
+export const getCardOnlyCheckoutParams = (apiVersion: string): TCardOnlyCheckoutParams =>
+  apiVersion >= ALLOWED_PAYMENT_METHOD_TYPES_API_VERSION
+    ? { allowed_payment_method_types: ["card"] }
+    : { payment_method_types: ["card"] };
+
 /**
  * Creates a Stripe Checkout Session in `setup` mode so the customer can enter
  * a payment method, billing address, and tax ID — without creating a new subscription.
@@ -43,7 +56,7 @@ export const createSetupCheckoutSession = async (
     // The upgrade that follows is confirmed with stripe.confirmCardPayment and may replace a legacy EUR
     // subscription with a USD one (ENG-3370), so only a card can pay it: a method offered for the
     // session's currency (e.g. SEPA for EUR) could be saved and then fail to pay the upgrade.
-    ...(upgradeIntent ? { payment_method_types: ["card"] } : {}),
+    ...(upgradeIntent ? getCardOnlyCheckoutParams(STRIPE_API_VERSION) : {}),
     billing_address_collection: "required",
     tax_id_collection: {
       enabled: true,
